@@ -206,7 +206,7 @@ export default function TrackComplaint() {
       } = await supabase
         .from("complaint_status_history")
         .select(
-          "id, complaint_id, status, message, changed_by, created_at"
+          "id, complaint_id, status, message, created_at"
         )
         .eq(
           "complaint_id",

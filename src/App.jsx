@@ -1,42 +1,55 @@
-import { Toaster } from "@/components/ui/toaster"
-import { QueryClientProvider } from '@tanstack/react-query'
-import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes, Navigate, useLocation } from 'react-router-dom';
-import PageNotFound from './lib/PageNotFound';
-import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import UserNotRegisteredError from '@/components/UserNotRegisteredError';
-import ScrollToTop from './components/ScrollToTop';
-import GlowCursor from '@/components/GlowCursor';
-import ProtectedRoute from '@/components/ProtectedRoute';
-import LandingPage from '@/pages/LandingPage';
-import Login from '@/pages/Login';
-import Register from '@/pages/Register';
-import ForgotPassword from '@/pages/ForgotPassword';
-import ResetPassword from '@/pages/ResetPassword';
-import CitizenDashboard from '@/pages/CitizenDashboard';
-import ReportIssue from '@/pages/ReportIssue';
-import MyComplaints from '@/pages/MyComplaints';
-import TrackComplaint from '@/pages/TrackComplaint';
-import ComplaintDetails from '@/pages/ComplaintDetails';
-import AdminDashboard from '@/pages/AdminDashboard';
-import WorkerDashboard from '@/pages/WorkerDashboard';
-import Departments from '@/pages/Departments';
-import Workers from '@/pages/Workers';
-import UsersPage from '@/pages/Users';
-import Reports from '@/pages/Reports';
-import AllComplaints from '@/pages/AllComplaints';
+import { Toaster } from "@/components/ui/toaster";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClientInstance } from "@/lib/query-client";
+import {
+  BrowserRouter as Router,
+  Route,
+  Routes,
+  Navigate,
+  useLocation,
+} from "react-router-dom";
+
+import PageNotFound from "./lib/PageNotFound";
+import { AuthProvider, useAuth } from "@/lib/AuthContext";
+import UserNotRegisteredError from "@/components/UserNotRegisteredError";
+import ScrollToTop from "./components/ScrollToTop";
+import GlowCursor from "@/components/GlowCursor";
+import ProtectedRoute from "@/components/ProtectedRoute";
+
+import LandingPage from "@/pages/LandingPage";
+import Login from "@/pages/Login";
+import Register from "@/pages/Register";
+import MFASetup from "@/pages/MFASetup";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
+import CitizenDashboard from "@/pages/CitizenDashboard";
+import ReportIssue from "@/pages/ReportIssue";
+import MyComplaints from "@/pages/MyComplaints";
+import TrackComplaint from "@/pages/TrackComplaint";
+import ComplaintDetails from "@/pages/ComplaintDetails";
+import AdminDashboard from "@/pages/AdminDashboard";
+import WorkerDashboard from "@/pages/WorkerDashboard";
+import Departments from "@/pages/Departments";
+import Workers from "@/pages/Workers";
+import UsersPage from "@/pages/Users";
+import Reports from "@/pages/Reports";
+import AllComplaints from "@/pages/AllComplaints";
 
 function RoleRedirect() {
   const { isAuthenticated, user } = useAuth();
   const location = useLocation();
 
-  if (isAuthenticated && user && ['/login', '/register'].includes(location.pathname)) {
+  if (
+    isAuthenticated &&
+    user &&
+    ["/login", "/register"].includes(location.pathname)
+  ) {
     const dest =
-      user.role === 'admin'
-        ? '/admin'
-        : user.role === 'worker'
-          ? '/worker'
-          : '/citizen';
+      user.role === "admin"
+        ? "/admin"
+        : user.role === "worker"
+          ? "/worker"
+          : "/citizen";
 
     return <Navigate to={dest} replace />;
   }
@@ -49,7 +62,7 @@ const AuthenticatedApp = () => {
     isLoadingAuth,
     isLoadingPublicSettings,
     authError,
-    navigateToLogin
+    navigateToLogin,
   } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
@@ -61,9 +74,9 @@ const AuthenticatedApp = () => {
   }
 
   if (authError) {
-    if (authError.type === 'user_not_registered') {
+    if (authError.type === "user_not_registered") {
       return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
+    } else if (authError.type === "auth_required") {
       navigateToLogin();
       return null;
     }
@@ -79,6 +92,9 @@ const AuthenticatedApp = () => {
         <Route path="/login" element={<Login />} />
 
         <Route path="/register" element={<Register />} />
+
+        {/* Added: MFA setup page */}
+        <Route path="/mfa-setup" element={<MFASetup />} />
 
         <Route path="/forgot-password" element={<ForgotPassword />} />
 

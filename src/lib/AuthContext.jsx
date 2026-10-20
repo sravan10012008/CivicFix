@@ -1,4 +1,5 @@
-// @ts-nocheck
+
+ // @ts-nocheck
 
 import React, {
   createContext,
@@ -10,7 +11,39 @@ import { supabase } from "@/lib/supabase";
 
 const AuthContext = createContext();
 
-export const AuthProvider = ({ children }) => {
+const getSessionAal = (session) => {
+  try {
+    const token = session?.access_token;
+
+    if (!token) {
+      return null;
+    }
+
+    const parts = token.split(".");
+
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    const base64 = parts[1]
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "="
+    );
+
+    const claims = JSON.parse(window.atob(padded));
+
+    return claims.aal || null;
+  } catch (error) {
+    console.error("Unable to read session assurance level:", error);
+    return null;
+  }
+};
+
+const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
@@ -66,6 +99,43 @@ export const AuthProvider = ({ children }) => {
     };
   };
 
+  // Keep worker routes unavailable until the session is at AAL2.
+  // The backend independently verifies the token and enforces MFA.
+  const applySession = async (session) => {
+    if (!session?.user) {
+      setUser(null);
+      setIsAuthenticated(false);
+      setAuthChecked(true);
+      setIsLoadingAuth(false);
+      return;
+    }
+
+    const appUser = await buildAppUser(session.user);
+
+    if (!appUser) {
+      setUser(null);
+      setIsAuthenticated(false);
+      setAuthChecked(true);
+      setIsLoadingAuth(false);
+      return;
+    }
+
+    const sessionAal = getSessionAal(session);
+    const workerNeedsMfa =
+      appUser.role === "worker" && sessionAal !== "aal2";
+
+    setUser(appUser);
+    setIsAuthenticated(!workerNeedsMfa);
+    setAuthChecked(true);
+    setIsLoadingAuth(false);
+
+    if (workerNeedsMfa) {
+      console.info(
+        "Worker authentication pending MFA verification."
+      );
+    }
+  };
+
   const checkAppState = async () => {
     try {
       setIsLoadingAuth(true);
@@ -80,17 +150,7 @@ export const AuthProvider = ({ children }) => {
         throw error;
       }
 
-      if (session?.user) {
-        const appUser = await buildAppUser(session.user);
-
-        setUser(appUser);
-        setIsAuthenticated(true);
-      } else {
-        setUser(null);
-        setIsAuthenticated(false);
-      }
-
-      setAuthChecked(true);
+      await applySession(session);
     } catch (error) {
       console.error("Authentication check failed:", error);
 
@@ -112,57 +172,58 @@ export const AuthProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    // Initial authentication check
+    // Initial authentication check.
     checkAppState();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-
-        // User explicitly logged out
+        // User explicitly logged out.
         if (event === "SIGNED_OUT") {
           setUser(null);
           setIsAuthenticated(false);
           setAuthChecked(true);
           setIsLoadingAuth(false);
+          setAuthError(null);
           return;
         }
 
-        // Initial session / successful login / profile update
+        // Login, restored session, profile update, or successful MFA.
         if (
           event === "INITIAL_SESSION" ||
           event === "SIGNED_IN" ||
-          event === "USER_UPDATED"
+          event === "USER_UPDATED" ||
+          event === "MFA_CHALLENGE_VERIFIED"
         ) {
-          if (session?.user) {
-            const appUser =
-              await buildAppUser(session.user);
+          try {
+            await applySession(session);
+          } catch (error) {
+            console.error(
+              "Unable to update authentication state:",
+              error
+            );
 
-            setUser(appUser);
-            setIsAuthenticated(true);
-          } else {
             setUser(null);
             setIsAuthenticated(false);
+            setAuthChecked(true);
+            setIsLoadingAuth(false);
           }
 
-          setAuthChecked(true);
-          setIsLoadingAuth(false);
+          return;
         }
 
-        /*
-         * IMPORTANT:
-         *
-         * Do NOT call checkAppState() for TOKEN_REFRESHED.
-         *
-         * Supabase may refresh the authentication token
-         * when the browser tab becomes active again.
-         *
-         * The user is still logged in, so there is no need
-         * to reload the profile or show the authentication
-         * loading state again.
-         */
+        // Do not reload the entire profile for a routine token refresh.
+        // The backend independently checks the token on protected requests.
         if (event === "TOKEN_REFRESHED") {
+          if (session?.user) {
+            const sessionAal = getSessionAal(session);
+
+            if (user?.role === "worker") {
+              setIsAuthenticated(sessionAal === "aal2");
+            }
+          }
+
           return;
         }
       }
@@ -193,20 +254,13 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async (shouldRedirect = true) => {
     try {
-      const { error } =
-        await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut();
 
       if (error) {
-        console.error(
-          "Supabase logout error:",
-          error
-        );
+        console.error("Supabase logout error:", error);
       }
     } catch (error) {
-      console.error(
-        "Logout failed:",
-        error
-      );
+      console.error("Logout failed:", error);
     }
 
     setUser(null);
@@ -245,6 +299,8 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
+
+export { AuthProvider };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);

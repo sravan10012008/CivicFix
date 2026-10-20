@@ -245,60 +245,82 @@ export default function WorkerDashboard() {
 
   const startWork = async (id) => {
     try {
-      const complaint =
-        complaints.find(
-          (item) => item.dbId === id
-        );
+      const complaint = complaints.find(
+        (item) => item.dbId === id
+      );
 
       if (!complaint) {
         return;
       }
 
       const {
-        data,
-        error,
-      } = await supabase
-        .from("complaints")
-        .update({
-          work_status: "In Progress",
-          status: "In Progress",
-          updated_at:
-            new Date().toISOString(),
-        })
-        .eq("id", complaint.dbId)
-        .select()
-        .single();
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (error) {
-        throw error;
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      if (!session?.access_token) {
+        throw new Error("Please sign in again.");
+      }
+
+      const response = await fetch(
+        `/api/complaints/${complaint.dbId}/start`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+
+      const responseText = await response.text();
+      let result = {};
+
+      if (responseText.trim()) {
+        try {
+          result = JSON.parse(responseText);
+        } catch {
+          throw new Error(
+            `Server returned invalid JSON while starting work (HTTP ${response.status}). Check the backend terminal.`
+          );
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          result.error || `Failed to start work (HTTP ${response.status}).`
+        );
+      }
+
+      const updatedComplaint = result.complaint;
+
+      if (!updatedComplaint || !updatedComplaint.id) {
+        throw new Error(
+          "The server did not return the updated complaint while starting work."
+        );
       }
 
       setComplaints((current) =>
         current.map((item) =>
-          item.dbId === data.id
+          item.dbId === updatedComplaint.id
             ? {
                 ...item,
                 status:
-                  data.work_status ||
+                  updatedComplaint.work_status ||
                   "In Progress",
               }
             : item
         )
       );
 
-      alert(
-        "Work started successfully."
-      );
+      alert("Work started successfully.");
     } catch (error) {
-      console.error(
-        "Failed to start work:",
-        error
-      );
-
-      alert(
-        error.message ||
-          "Failed to start work."
-      );
+      console.error("Failed to start work:", error);
+      alert(error.message || "Failed to start work.");
     }
   };
 
@@ -467,36 +489,60 @@ export default function WorkerDashboard() {
         }
 
         const {
-          data,
-          error,
-        } =
-          await supabase
-            .from("complaints")
-            .update({
-              completion_photo_url:
-                completionPhotoUrl,
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
 
-              proof_rejection_reason:
-                null,
+        if (sessionError) {
+          throw sessionError;
+        }
 
-              work_status:
-                "Proof Submitted",
+        if (!session?.access_token) {
+          throw new Error("Please sign in again.");
+        }
 
-              status:
-                "Proof Submitted",
+        const response = await fetch(
+          `/api/complaints/${proofComplaint.dbId}/submit-proof`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              completionPhotoUrl,
+            }),
+          }
+        );
 
-              updated_at:
-                new Date().toISOString(),
-            })
-            .eq(
-              "id",
-              proofComplaint.dbId
-            )
-            .select()
-            .single();
+        // Read the response as text first so empty/non-JSON server errors
+        // do not cause an unrelated "Unexpected end of JSON input" error.
+        const responseText = await response.text();
+        let result = {};
 
-        if (error) {
-          throw error;
+        if (responseText.trim()) {
+          try {
+            result = JSON.parse(responseText);
+          } catch {
+            throw new Error(
+              `Server returned invalid JSON while submitting proof (HTTP ${response.status}). Check the backend terminal.`
+            );
+          }
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            result.error ||
+              `Failed to submit completion proof (HTTP ${response.status}).`
+          );
+        }
+
+        const data = result.complaint;
+
+        if (!data || !data.id) {
+          throw new Error(
+            "The server did not return the updated complaint after proof submission."
+          );
         }
 
         setComplaints((current) =>
